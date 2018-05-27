@@ -164,7 +164,7 @@ void	mmu_set_dacr (uint32 dacr)
 
 			/* Write the new DACR */
 
-			"mcr	p15, 0, r0, c13, c0, 1\n"
+        	"mcr	p15, 0, r0, c3, c0, 0\n"
 
 			/* Perform memory synchronization */
 			"isb\n"
