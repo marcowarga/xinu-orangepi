@@ -91,10 +91,10 @@ secondary_start:
  * Set up stacks for all modes for the current core
  *------------------------------------------------------------------------
  */
-#define STACK_ADDR        0x40200000
-//#define STACK_ADDR        MAXADDR //mw causes crashes, have yet to figure out why
+#define STACK_ADDR        MAXADDR
 #define STACK_PER_MODE    0x8000
 #define STACK_PER_CORE    STACK_PER_MODE * 6
+#define STACK_TOTAL       STACK_PER_CORE * 4
 #define SVR_STACK         STACK_PER_MODE
 #define IRQ_STACK         STACK_PER_MODE * 1
 #define FIQ_STACK         STACK_PER_MODE * 2
@@ -145,6 +145,12 @@ setup_stacks:
     sub sp, r4, # SVR_STACK
 
 	bx lr
+
+// get total stack size
+.globl get_stack_size
+get_stack_size:
+	mov r0, #STACK_TOTAL
+	bx	lr
 
 /*------------------------------------------------------------------------
  * Function to zero memory (r0 is lowest addr; r1 is highest)

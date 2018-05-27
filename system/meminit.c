@@ -5,6 +5,7 @@
 void	*minheap;	/* Start address of heap	*/
 void	*maxheap;	/* End address of heap		*/
 lid32	memlock;	/* Lock on low level memory manager */
+uint32 get_stack_size(void); // get size of stack set up by start.S
 
 /*------------------------------------------------------------------------
  * meminit - Initialize the free memory list for Orange Pi
@@ -17,8 +18,7 @@ void	meminit(void)
 	/* Initialize the minheap and maxheap variables */
 
 	minheap = (void *)&end;
-    minheap += 16 * 0x100000; //mw reserve some space for core stacks until I've figured why MAXADDR doesn't work
-	maxheap = (void *)MAXADDR;
+	maxheap = (void *)(MAXADDR - get_stack_size());
 
 	/* Initialize the memory list as one big block */
 
