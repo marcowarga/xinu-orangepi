@@ -2,6 +2,7 @@
 
 #include <xinu.h>
 #include <stdarg.h>
+#include "h3spinlock.h"
 
 /*------------------------------------------------------------------------
  * kputc - use polled I/O to write a character to the console serial line
@@ -90,8 +91,14 @@ syscall kprintf(char *fmt, ...)
 {
     va_list ap;
 
+    // quick hack to avoid multiple cores printing at the same time
+    h3_spinlock_acquire(0);
+
     va_start(ap, fmt);
     _doprnt(fmt, ap, (int (*)(int))kputc, (int)&devtab[CONSOLE]);
     va_end(ap);
+
+    h3_spinlock_release(0);
+
     return OK;
 }
