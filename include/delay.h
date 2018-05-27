@@ -20,6 +20,6 @@
 	register long i;				\
 							\
 	for (i=n;i>0;i--) {				\
-		DELAY(1000);				\
+		DELAY(10000);				\
 	}						\
 }
