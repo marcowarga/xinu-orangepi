@@ -17,6 +17,7 @@ void	meminit(void)
 	/* Initialize the minheap and maxheap variables */
 
 	minheap = (void *)&end;
+    minheap += 16 * 0x100000; //mw reserve some space for core stacks until I've figured why MAXADDR doesn't work
 	maxheap = (void *)MAXADDR;
 
 	/* Initialize the memory list as one big block */
