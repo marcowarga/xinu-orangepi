@@ -98,7 +98,7 @@ secondary_start:
 #define SVR_STACK         STACK_PER_MODE
 #define IRQ_STACK         STACK_PER_MODE * 1
 #define FIQ_STACK         STACK_PER_MODE * 2
-#define USER_STACK        STACK_PER_MODE * 3
+#define SYSTEM_STACK      STACK_PER_MODE * 3
 #define ABORT_STACK       STACK_PER_MODE * 4
 #define UNDEFINED_STACK   STACK_PER_MODE * 5
 
@@ -134,12 +134,12 @@ setup_stacks:
     msr cpsr_c, r0
     sub sp, r4, # ABORT_STACK
 
-    // switch to user mode, set sp
+    // switch to system mode, set sp
     mov r0, #(CPSR_MODE_SYSTEM | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
     msr cpsr_c, r0
-    sub sp, r4, # USER_STACK
+    sub sp, r4, # SYSTEM_STACK
 
-    // switch to SVC mode, set sp
+    // switch back to supervisor mode, set sp
     mov r0, #(CPSR_MODE_SVR | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
     msr cpsr_c, r0
     sub sp, r4, # SVR_STACK
