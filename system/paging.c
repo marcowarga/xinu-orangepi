@@ -24,7 +24,7 @@ status	paging_init (void) {
 						PDE_AP3		|
 						PDE_TEX0	|
 						PDE_S		|
-						PDE_NS		|
+						//PDE_NS		|	// setting this flag makes lots of registers on the secondary cores return zero
 						PDE_XN		|
 						(i << 20) );
 	}
@@ -49,8 +49,8 @@ status	paging_init (void) {
 	}
 
 	/* Set the Translation Table Base Address Register */
-
+#ifndef MMUT
 	mmu_set_ttbr(page_table);
-
+#endif
 	return OK;
 }
