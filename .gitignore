@@ -10,3 +10,4 @@ config/lex.yy.c
 config/y.tab.c
 include/conf.h
 system/conf.c
+*.bak
