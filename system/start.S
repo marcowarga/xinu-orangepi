@@ -1,5 +1,3 @@
-/* start.S - start, bzero */
-
 #include <armv7a.h>
 
 #define UART0LSR 0x01C28014
@@ -17,75 +15,131 @@
 #define CPSR_IRQ_INHIBIT		0x80
 #define CPSR_FIQ_INHIBIT		0x40
 
+.text
+
 /*------------------------------------------------------------------------
  * start  -  Initial entry point for a Xinu image (ARM) for primary core
  *------------------------------------------------------------------------
  */
-	.text
-	.globl	start			/* Declare entry point global	*/
-
+.globl start
 start:
-
-	// routine taken from NetBSD
-	// enter SVC mode and enable the SMP bit if necessary
-	// note: if the SMP bit has changed, caches will be enabled
-	// but the MMU will be disabled
-	bl coretex_init
-
-	// set up stacks for all modes of this core
-	bl setup_stacks
-
-	/* Use bzero (below) to zero out the BSS area */
-	ldr	r0, =edata
-	ldr	r1, =end
-	bl	bzero
-
-	/* Call nulluser to initialize the Xinu system  */
-	/*    (Note: the call never returns)		*/
-	bl	nulluser
+	b start_core
 
 /*------------------------------------------------------------------------
  * secondary_start  -  entry point for secondary cores
  *------------------------------------------------------------------------
  */
-	.text
-	.globl	secondary_start			/* Declare entry point global	*/
-
+.globl	secondary_start
 secondary_start:
-	// NetBSD clears caches on secondary core startup
-	// since we start up with secondary cores disabled,
-	// this is likely not necessary though
-	bl armv7_dcache_l1inv_all
-	bl armv7_icache_inv_all
+	b start_core
 
-	// routine taken from NetBSD
-	// enter SVC mode and enable the SMP bit if necessary
-	// note: if the SMP bit has changed, caches will be enabled
-	// but the MMU will be disabled
-	bl coretex_init
+/*------------------------------------------------------------------------
+ * start_core  -  core initialization
+ *------------------------------------------------------------------------
+ */
+start_core:
+	// first switch to SVR mode and disable interrupts
+	mov r0, #(CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT | CPSR_MODE_SVR)
+	msr cpsr, r0
 
-	// disable unaligned access
-	// (simply because its disabled on core0, too)
-	bl disable_unaligned_access
+	// set the spsr to a known value
+	mov r0, #(CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT | CPSR_MODE_SVR)
+	msr spsr_cxsf, r0
+	mrs r0, spsr
 
-	// set exception vector
-	ldr r0, =exp_vector
-	bl evec_set_addr
+	// allow unaligned data access
+	mrc      p15, 0, r0, c1, c0, 0
+	bic      r0, r0, #2
+	mcr      p15, 0, r0, c1, c0, 0
 
-	// set page table adress, access control and enable the MMU
-	ldr r0, =page_table
-	bl mmu_set_ttbr
-	ldr r0, =0xFFFFFFFF
-	bl mmu_set_dacr
+	// disable I cache, D cache and MMU
+	// (we want to set up everything from scratch)
+	mrc p15, 0, r0, c1, c0, 0
+	bic r0, #0x00001000		// I cache
+	bic r0, #0x00000004		// D cache
+	bic r0, #0x00000001		// MMU
+	mcr p15, 0, r0, c1, c0, 0
 	isb
-	dsb
-	dmb
-	bl mmu_enable
+
+	// enable SMP
+	// (this needs to be done before the MMU is enabled)
+	mrc p15, 0, r0, c1, c0, 1
+	bic r0, r0, #0x040
+	mcr p15, 0, r0, c1, c0, 1
 
 	// set up stacks for all modes of this core
 	bl setup_stacks
 
-	bl secondary_run	/* never returns */
+	// core 0 has to inititialize
+	// some shared data
+	mrc p15, 0, r11, c0, c0, 5
+	and r11, r11, #0x03
+	cmp r11, #0
+	bne 1f
+		/// zero BSS
+		ldr	r0, =edata
+		ldr	r1, =end
+		bl	bzero
+		dsb
+
+		// create exception vector
+		bl initevec
+		dsb
+
+		// create page table
+		bl paging_init
+		dsb
+
+1:
+	// set exception vector
+	ldr r0, =exp_vector
+	bl evec_set_addr
+
+	// enable I cache
+	// (it works without MMU enabled)
+	mov r1, #0x0
+	mcr p15, 0, r1, c7, c5, 0	// invalidate I cache
+	mov  r1, #0x1000
+	mcr p15, 0, r1, c1, c0, 0	// enable I cache
+	isb
+
+	// set page table address in TTBR0/TTBR1
+	ldr r0, =page_table
+	dsb
+	bl mmu_set_ttbr
+	isb
+
+	// set DACR to manager level for all domains
+	ldr r0, =0xffffffff
+	bl mmu_set_dacr
+
+	// invalidate TLB and enable the MMU
+	mov r0, #1
+	mcr p15, 0, r0, c8, c7, 0
+	isb
+	mrc p15,0,r0,c1,c0,0
+	orr r0,r0,#1
+	mcr p15,0,r0,c1,c0,0
+	isb
+	dsb
+
+	// invalidate and enable the D cache
+	// (it needs an enabled MMU to work)
+	bl armv7_dcache_l1inv_all
+	mrc	p15, 0, r0, c1, c0, 0
+	orr	r0, #0x00000004
+	mcr	p15, 0, r0, c1, c0, 0
+
+	// jump to Xinu
+	mrc p15, 0, r11, c0, c0, 5
+	and r11, r11, #0x03
+	cmp r11, #0
+	bne 2f
+		bl	nulluser	// core0
+2:
+	bl secondary_run	// the other cores
+
+	bx lr
 
 /*------------------------------------------------------------------------
  * Set up stacks for all modes for the current core
@@ -103,50 +157,52 @@ secondary_start:
 #define UNDEFINED_STACK   STACK_PER_MODE * 5
 
 setup_stacks:
-
 	// fetch core number into r11
 	mrc p15, 0, r11, c0, c0, 5
 	and r11, r11, #0x03
 
 	// calc stack offset for this core
 	ldr r1,=STACK_PER_CORE
-    mul r0, r1, r11
+	mul r0, r1, r11
 	ldr r1,=STACK_ADDR
 	sub r4, r1, r0
 
-    // switch to interrupt mode, set sp
-    mov r0, #(CPSR_MODE_IRQ | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
-    msr cpsr_c, r0
-    sub sp, r4, # IRQ_STACK
+	// switch to interrupt mode, set sp
+	mov r0, #(CPSR_MODE_IRQ | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
+	msr cpsr_c, r0
+	sub sp, r4, #IRQ_STACK
 
-    // switch to fiq mode, set sp
-    mov r0, #(CPSR_MODE_FIQ | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
-    msr cpsr_c, r0
-    sub sp, r4, # FIQ_STACK
+	// switch to fiq mode, set sp
+	mov r0, #(CPSR_MODE_FIQ | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
+	msr cpsr_c, r0
+	sub sp, r4, #FIQ_STACK
 
-    // switch to undefined exception mode, set sp
-    mov r0, #(CPSR_MODE_UNDEFINED | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
-    msr cpsr_c, r0
-    sub sp, r4, # UNDEFINED_STACK
+	// switch to undefined exception mode, set sp
+	mov r0, #(CPSR_MODE_UNDEFINED | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
+	msr cpsr_c, r0
+	sub sp, r4, #UNDEFINED_STACK
 
-    // switch to data abort exception mode, set sp
-    mov r0, #(CPSR_MODE_ABORT | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
-    msr cpsr_c, r0
-    sub sp, r4, # ABORT_STACK
+	// switch to data abort exception mode, set sp
+	mov r0, #(CPSR_MODE_ABORT | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
+	msr cpsr_c, r0
+	sub sp, r4, #ABORT_STACK
 
-    // switch to system mode, set sp
-    mov r0, #(CPSR_MODE_SYSTEM | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
-    msr cpsr_c, r0
-    sub sp, r4, # SYSTEM_STACK
+	// switch to user mode, set sp
+	mov r0, #(CPSR_MODE_SYSTEM | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
+	msr cpsr_c, r0
+	sub sp, r4, #SYSTEM_STACK
 
-    // switch back to supervisor mode, set sp
-    mov r0, #(CPSR_MODE_SVR | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
-    msr cpsr_c, r0
-    sub sp, r4, # SVR_STACK
+	// switch to SVC mode, set sp
+	mov r0, #(CPSR_MODE_SVR | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
+	msr cpsr_c, r0
+	sub sp, r4, #SVR_STACK
 
 	bx lr
 
-// get total stack size
+/*------------------------------------------------------------------------
+ * Return the total size of all stacks
+ *------------------------------------------------------------------------
+ */
 .globl get_stack_size
 get_stack_size:
 	mov r0, #STACK_TOTAL
@@ -167,79 +223,80 @@ bzero:
 	b	1b						/* Continue to iterate		*/
 2:	mov	pc, lr					/* Return to caller		*/
 
-/* The cycle count register is a 32 bit register
- * This is for a Cortex A8 arm chip.
- */
-	.globl get_ccnt
+.globl get_ccnt
 get_ccnt:
 	mrc     p15, 0, r0, c9, c13, 0
 	bx	lr
 
-	.globl set_ccnt
+.globl set_ccnt
 set_ccnt:
 	mcr     p15, 0, r0, c9, c13, 0
 	bx	lr
 
-/* The performance monitor control register controls
- * the behavior of the CCNT register.
- */
-	.globl get_pmcr
+.globl get_pmcr
 get_pmcr:
 	mrc     p15, 0, r0, c9, c12, 0
 	bx	lr
 
-	.globl set_pmcr
+.globl set_pmcr
 set_pmcr:
 	mcr     p15, 0, r0, c9, c12, 0
 	bx	lr
 
-/* Counter enable register.
- */
-	.globl get_cena
+.globl get_prrr
+get_prrr:
+	mrc     p15, 0, r0, c10, c2, 0
+	bx	lr
+
+.globl get_nmrr
+get_nmrr:
+	mrc     p15, 0, r0, c10, c2, 1
+	bx	lr
+
+.globl get_idsar
+get_idsar:
+	mrc p15, 0, r0, c0, c2, 3
+	bx lr
+
+.globl get_cena
 get_cena:
 	mrc     p15, 0, r0, c9, c12, 1
 	bx	lr
 
-	.globl set_cena
+.globl set_cena
 set_cena:
 	mcr     p15, 0, r0, c9, c12, 1
 	bx	lr
 
-/* Counter disable register.
- */
-	.globl get_cdis
+.globl get_cdis
 get_cdis:
 	mrc     p15, 0, r0, c9, c12, 2
 	bx	lr
 
-/* Read access to various registers
- */
-	.globl get_sctlr
+.globl get_sctlr
 get_sctlr:
 	mrc     p15, 0, r0, c1, c0, 0
 	bx	lr
 
-	.globl get_actlr
+.globl get_actlr
 get_actlr:
 	mrc     p15, 0, r0, c1, c0, 1
 	bx	lr
 
-	.globl get_ttbr0
+.globl get_ttbr0
 get_ttbr0:
 	mrc     p15, 0, r0, c2, c0, 0
 	bx	lr
-	.globl get_ttbcr
+
+.globl get_ttbcr
 get_ttbcr:
 	mrc     p15, 0, r0, c2, c0, 2
 	bx	lr
 
-/* disable unaligned access
- */
-disable_unaligned_access:
-    mrc      p15, 0, r0, c1, c0, 0   // read SCTLR
-    orr      r0, r0, #2              // A (no unaligned access fault)
-    mcr      p15, 0, r0, c1, c0, 0   // write SCTLR
-    bx lr
+.globl get_scr
+get_scr:
+	mrc p15, 0, r0, c1, c1, 0
+	bx	lr
 
 /*------------------------------------------------------------------------
  * Page Table
@@ -254,18 +311,22 @@ page_table:
 
 /*------------------------------------------------------------------------
  * bputc	-	simple polled output, prints C to screen for assembly
- 				debugging when kputc won't work
+				debugging when kputc won't work
  *------------------------------------------------------------------------
  */
+.text
 .globl bputc
 bputc:
 	ldr r0, =UART0LSR		/* point to uart line status reg */
 	ldr r1, [r0]			/* get value of line status reg */
 	and r1, r1, #TX_READY	/* mask tx ready bit bit */
-    cmp r1, #TX_READY		/* check for bit set */
+	cmp r1, #TX_READY		/* check for bit set */
 	bne bputc				/* keep poling until bit is set */
 	ldr r0, =UART0RBR		/* point to TX register */
 	mov r1, #67				/* decimal 67 is capitol C */
 	str r1, [r0]
+	isb
+	dsb
+	dmb
 	mov pc, lr
 

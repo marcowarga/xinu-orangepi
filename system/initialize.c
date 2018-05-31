@@ -44,7 +44,7 @@ struct	cpuent	cputab[NCPU];	/* global state for each cpu */
  *------------------------------------------------------------------------
  */
 
-void	nulluser()
+void nulluser()
 {	
 	struct	memblk	*memptr;	/* Ptr to memory block		*/
 	uint32	free_mem;		/* Total amount of free memory	*/
@@ -76,7 +76,7 @@ void	nulluser()
 
 	/* Enable interrupts */
 	enable();
-	gic_enable();
+    gic_enable();
 
 	/* Initialize the network stack and start processes */
 
@@ -145,56 +145,48 @@ local process	startup(void)
  */
 static	void	sysinit()
 {
-	int32 i;	/* iterator over devices */
+    int32 i;	/* iterator over devices */
 	kprintf(CONSOLE_RESET);
 	kprintf("\n%s\n\n", VERSION);
 
-	/* Initialize the interrupt vectors */
-
-	initevec();
-
-	/* Initialize the MMU */
-
-	mmuinit();
-
 	/* Platform Specific Initialization */
 
-	platinit();
+    platinit();
 	
 	/* Initialize free memory list */
-	
-	meminit();
+
+    meminit();
 
 	/* Initialize process variables */
 
-	procinit();
+    procinit();
 
 	/* Initialize semaphores */
 
-	seminit();
+    seminit();
 
 	/* Initialize buffer pools */
 
-	bufinit();
+    bufinit();
 
 	/* Create a ready list for processes */
 
-	readylist = newqueue();
+    readylist = newqueue();
 	readylock = newlock();
 
 	/* Initialize the real time clock */
 
-	clkinit();
+    clkinit();
 
 	/* Initialize devices */
 
-	for (i = 0; i < NDEVS; i++) {
+    for (i = 0; i < NDEVS; i++) {
 		init(i);
 	}
 
 	/* Initialize CPU CSRs and start up secondary cores */
 
-	cpuinit();
+    cpuinit();
 
 	return;
 }

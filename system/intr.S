@@ -156,7 +156,10 @@ dab_except:
 				/*   mode stack				*/
 	cps	#19		/* Change to supervisor mode		*/
 	push	{r0-r12, lr}	/* Save all registers			*/
+
+    mov r0, lr
 	bl	dab_handler	/* Call dab_handler			*/
+
 	pop	{r0-r12, lr}	/* Restore all registers		*/
 	rfeia	sp!		/* Return from the exception using info	*/
 				/*   stored on the stack		*/

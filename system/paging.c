@@ -10,12 +10,16 @@ status	paging_init (void) {
 
 	int32	i;		/* Loop counter			*/
 
+	// NOTE: U-boot starts us up in secure mode, so we
+	//       have to create according secure mode descriptors
+	//       without the NS flag beeing set.
+
 	/* First, initialize PDEs for device memory	*/
 	/* AP[2:0] = 0b011 for full access		*/
 	/* TEX[2:0] = 0b000 and B = 1, C = 0 for	*/
 	/*		shareable dev. mem.		*/
 	/* S = 1 for shareable				*/
-	/* NS = 1 for non-secure			*/
+	/* NS = 0 for secure mode			*/
 
 	for(i = 0; i < 1024; i++) { //TODO changed from 2048
 
@@ -24,7 +28,6 @@ status	paging_init (void) {
 						PDE_AP3		|
 						PDE_TEX0	|
 						PDE_S		|
-						//PDE_NS		|	// setting this flag makes lots of registers on the secondary cores return zero
 						PDE_XN		|
 						(i << 20) );
 	}
@@ -34,7 +37,7 @@ status	paging_init (void) {
 	/* TEX[2:0] = 0b101 B = 1, C = 1 for write back	*/
 	/*	write alloc. outer & inner caches	*/
 	/* S = 1 for shareable				*/
-	/* NS = 1 for non-secure mem.		*/
+	/* NS = 0 for secure mode mem.		*/
 
 	for(i = 1024; i < 4096; i++) {
 
@@ -43,14 +46,12 @@ status	paging_init (void) {
 						PDE_C		|
 						PDE_AP3		|
 						PDE_TEX5	|
-						PDE_S		|
-						PDE_NS		|
+//						PDE_S		|	// this will make ldrex/strex data abort
 						(i << 20) );
 	}
 
 	/* Set the Translation Table Base Address Register */
-#ifndef MMUT
-	mmu_set_ttbr(page_table);
-#endif
+    asm volatile ("isb\ndsb\ndmb\n");
+
 	return OK;
 }

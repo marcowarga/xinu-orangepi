@@ -151,8 +151,13 @@ void pfa_handler(void){
  *------------------------------------------------------------------------
  */
 void dab_handler(void){
-	kputc('D');
-	panic("**** DATA ABORT EXCEPTION ****");
+    uint32 lrx, dfsr;
+    asm volatile ("mov %0, r0\n" : "=r"(lrx));
+    asm volatile ("mrc p15, 0, %0, c5, c0, 0" : "=r"(dfsr));
+    kputc('D');
+    kprintf("pc=0x%08x dfsr=0x%08x\n", lrx, dfsr);
+    panic("**** DATA ABORT EXC/EPTION ****");
+
 	return;
 }
 
