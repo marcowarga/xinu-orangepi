@@ -147,7 +147,6 @@ void cpuinit(void){
 	struct cpuent* cpuptr;	/* pointer to cpu entry */
 
     led_init();
-	h3_spinlock_init();
 	perfcounters_init();
 
 //    kprintf("Hello from core %d! (sp=0x%x f=%u)\r\n", getcid(), &i, get_cpuclk());
@@ -297,6 +296,7 @@ void secondary_run(void)
 {
 	// signal started to core0 in cpu_enable() above
 	*((volatile uint32*)0x8) = 0;
+	asm volatile ("dsb");
 
 	// enable performance counters on this core
 	perfcounters_init();
