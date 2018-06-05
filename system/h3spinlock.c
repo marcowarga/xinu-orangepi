@@ -12,16 +12,25 @@ void h3_spinlock_init()
     *BUS_SOFT_RST_REG1 |= (1 << 22);
 }
 
+int h3_spinlock_tryacquire(uint32_t nr)
+{
+	volatile uint32_t* statreg = SPINLOCK_STATUS_REG0 + nr;
+	volatile uint32_t* lockreg = SPINLOCK_LOCK_REG0 + nr;
+	if (*statreg == 0)
+	{
+		if (*lockreg == 0)
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void h3_spinlock_acquire(uint32_t nr)
 {
-    volatile uint32_t* statreg = SPINLOCK_STATUS_REG0 + nr;
-    volatile uint32_t* lockreg = SPINLOCK_LOCK_REG0 + nr;
-    while (*statreg == 1)
-    {
-    }
-    while (*lockreg == 1)
-    {
-    }
+	while (!h3_spinlock_tryacquire(nr))
+	{
+	}
 }
 
 void h3_spinlock_release(uint32_t nr)
