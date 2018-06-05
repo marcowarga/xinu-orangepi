@@ -4,6 +4,7 @@
 
 #include <xinu.h>
 #include <string.h>
+#include <h3spinlock.h>
 
 extern	void	start(void);	/* Start of Xinu code			*/
 extern	void	*_end;		/* End of Xinu code			*/
@@ -49,6 +50,10 @@ void nulluser()
 	struct	memblk	*memptr;	/* Ptr to memory block		*/
 	uint32	free_mem;		/* Total amount of free memory	*/
 	
+	// we need hw spinlock support early for kprintf
+	// (TODO: check if existing sw spinlock is sufficient)
+	h3_spinlock_init();
+
 	/* Initialize the system */
 
 	sysinit();
