@@ -52,6 +52,15 @@ start_core:
 	bic      r0, r0, #2
 	mcr      p15, 0, r0, c1, c0, 0
 
+	// if enabled, flush D cache
+	// (this needs to be done before disabling the MMU)
+	mrc     p15, 0, r0, c1, c0, 0
+	and     r0, r0, #(1 << 2)
+	cmp     r0, #0
+	beq     1f
+		bl armv7_dcache_wbinv_all
+
+1:
 	// disable I cache, D cache and MMU
 	// (we want to set up everything from scratch)
 	mrc p15, 0, r0, c1, c0, 0
@@ -75,7 +84,7 @@ start_core:
 	mrc p15, 0, r11, c0, c0, 5
 	and r11, r11, #0x03
 	cmp r11, #0
-	bne 1f
+	bne 2f
 		/// zero BSS
 		ldr	r0, =edata
 		ldr	r1, =end
@@ -90,7 +99,7 @@ start_core:
 		bl paging_init
 		dsb
 
-1:
+2:
 	// set exception vector
 	ldr r0, =exp_vector
 	bl evec_set_addr
@@ -134,9 +143,9 @@ start_core:
 	mrc p15, 0, r11, c0, c0, 5
 	and r11, r11, #0x03
 	cmp r11, #0
-	bne 2f
+	bne 3f
 		bl	nulluser	// core0
-2:
+3:
 	bl secondary_run	// the other cores
 
 	bx lr
